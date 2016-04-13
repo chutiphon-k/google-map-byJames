@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no">
+    <meta charset="utf-8">
+    <title>Draggable directions</title>
+    <style>
+      #right-panel {
+        font-family: 'Roboto','sans-serif';
+        line-height: 30px;
+        padding-left: 10px;
+      }
+
+      #right-panel select, #right-panel input {
+        font-size: 15px;
+      }
+
+      #right-panel select {
+        width: 100%;
+      }
+
+      #right-panel i {
+        font-size: 12px;
+      }
+      html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+      #map {
+        height: 100%;
+        float: left;
+        width: 63%;
+        height: 100%;
+      }
+      #right-panel {
+        float: right;
+        width: 34%;
+        height: 100%;
+      }
+      .panel {
+        height: 100%;
+        overflow: auto;
+      }
+    </style>
+    <script src="http://ajax.googleapis.com/ajax/libs/angularjs/1.4.8/angular.min.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.0/jquery.min.js"></script>
+  </head>
+  <body>
+    <div id="map"></div>
+    <div id="right-panel">
+      <p>Total Distance: <span id="total"></span></p>
+    </div>
+    
+    <script>
+      var map,directionsService,directionsDisplay;
+      var myMarkers_Temp = [],myMarkers = [],myPoints = [];
+      var myMarkerIndex_Update = 0,checkAddMymarkers;
+
+      function initMap() {
+        map = new google.maps.Map(document.getElementById('map'), {
+          zoom: 18,
+          center: {
+            lat: 13.777379, lng: 100.628801
+          },
+          disableDoubleClickZoom: true,
+          disableDefaultUI: true,
+          noClear: true,
+          overviewMapControl: false,
+        });
+        // disablePOIInfoWindow();
+
+        directionsService = new google.maps.DirectionsService;
+        directionsDisplay = new google.maps.DirectionsRenderer({
+          draggable: true,
+          map: map,
+          suppressMarkers: true,
+          suppressBicyclingLayer: false,
+          suppressInfoWindows: false,
+          preserveViewport: true,
+        });
+
+        directionsDisplay.addListener('directions_changed', function() {
+          computeTotalDistance(directionsDisplay.getDirections());
+        });
+
+        map.addListener('click', function(event) {
+          if(myPoints.length < 10){
+            addMarker_Temp(event.latLng);
+            myPoints.push({
+              location : event.latLng
+            });
+            if(myPoints.length >= 2){
+              checkAddMymarkers = true;
+              directionsDisplay.setMap(map);
+              displayRoute(directionsService, directionsDisplay,checkAddMymarkers);
+            }
+          }
+        });
+      }
+      
+///////////////////////////////////////////////////////////////////////////
+
+      function disablePOIInfoWindow(){
+          var fnSet = google.maps.InfoWindow.prototype.set;
+          google.maps.InfoWindow.prototype.set = function () {};
+      }
+
+///////////////////////////////////////////////////////////////////////////
+
+      function displayRoute(service, display,checkAddMymarkers) {
+        var ori,des,way = [],temp;
+
+        ori = myPoints[0];
+        des = myPoints[myPoints.length-1];
+        way = $.grep(myPoints, function(element, index){
+              return index != 0 && index != (myPoints.length-1);
+        });
+
+        service.route({
+          origin: ori,
+          destination: des,
+          waypoints: way,
+          travelMode: google.maps.TravelMode.DRIVING,
+          optimizeWaypoints: true,
+          avoidTolls: true,
+        }, function(response, status) {
+          if(status === google.maps.DirectionsStatus.OK) {
+            if(checkAddMymarkers){
+              deleteMarkers_Temp();
+              addMarker(response);
+            }
+            display.setDirections(response);
+            printContent();
+          } 
+          else {
+            alert('Could not display directions due to: ' + status);
+          }
+        });
+      }
+
+///////////////////////////////////////////////////////////////////////////
+
+      function addMarker(response){
+        var markerOption = {
+          animation: 2,
+          map: map
+        };
+        var leg = response.routes[0].legs;
+        var marker;
+
+        if(myMarkers.length == 0){
+          marker = new google.maps.Marker(markerOption);
+          marker.setAnimation(0);
+          marker.setPosition(leg[0].start_location);
+          marker.setIcon("pin_start.png");
+          marker.content = leg[0].start_address;
+          marker_AddOption(marker);
+
+          marker = new google.maps.Marker(markerOption);
+          marker.setPosition(leg[0].end_location);
+          marker.setIcon("pin_finish.png");
+          marker.content = leg[0].end_address;
+          marker_AddOption(marker);       
+        }
+        else{
+          if(myMarkers.length != 1){
+            myMarkers[myMarkers.length-1].setIcon("pin.png");
+          }
+          marker = new google.maps.Marker(markerOption);
+          marker.setPosition(leg[leg.length-1].end_location);
+          marker.setIcon("pin_finish.png");
+          marker.content = leg[leg.length-1].end_address;
+          marker_AddOption(marker);
+        }
+      }
+
+///////////////////////////////////////////////////////////////////////////
+
+      function marker_AddOption(marker,leg){
+          marker.index = myMarkerIndex_Update++;
+          marker.addListener('dblclick',function(){
+            deleteMarkers(this.index);
+          });
+          myMarkers.push(marker);
+      }
+
+///////////////////////////////////////////////////////////////////////////
+
+      function addMarker_Temp(location) {
+        var marker = new google.maps.Marker({
+          position: location,
+          map: map
+        });
+        myMarkers_Temp.push(marker);
+      }
+
+///////////////////////////////////////////////////////////////////////////
+
+      function computeTotalDistance(result) {
+        var total = 0;
+        var myroute = result.routes[0];
+        for (var i = 0; i < myroute.legs.length; i++) {
+          total += myroute.legs[i].distance.value;
+        }
+        total = total / 1000;
+        document.getElementById('total').innerHTML = total + ' km';
+      }
+
+///////////////////////////////////////////////////////////////////////////
+
+      function deleteMarkers_Temp() {
+        for (var i = 0; i < myMarkers_Temp.length; i++) {
+          myMarkers_Temp[i].setMap(null);
+        }
+        myMarkers_Temp = [];
+      }
+
+///////////////////////////////////////////////////////////////////////////
+
+      function deleteMarkers(index) {
+        var index_New = myMarkers.map(function(d) { 
+          return d['index']; 
+        }).indexOf(index);
+        myMarkers[index_New].setMap(null);
+        myMarkers.splice($.inArray(myMarkers[index_New],myMarkers),1);
+        myPoints.splice($.inArray(myPoints[index_New],myPoints),1);
+        checkAddMymarkers = false;
+        if(myMarkers.length < 2){
+          directionsDisplay.setMap(null);
+          printContent();
+        }
+        else{
+          displayRoute(directionsService, directionsDisplay,checkAddMymarkers);
+        }
+        if(myMarkers.length != 0){
+          myMarkers[myMarkers.length-1].setIcon("pin_finish.png");
+          myMarkers[0].setIcon("pin_start.png");
+        }
+      }
+
+///////////////////////////////////////////////////////////////////////////
+
+      function printContent(){
+        // console.log(myMarkers.length);
+        var i = 0;
+        myMarkers.forEach(function(x) {
+            console.log(i + " : " + x.content);
+            i++;
+        });
+      }
+
+///////////////////////////////////////////////////////////////////////////
+    </script>
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA81-RF6b3V0gHHLXU68QNgi2trOFPybcg&callback=initMap"></script>
+  </body>
+</html>
